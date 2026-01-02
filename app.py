@@ -3,8 +3,8 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
 # ---- UI ----
-st.set_page_config(page_title="Chatbot Demo", layout="wide")
-st.title("🤖 Chatbot Demo")
+st.set_page_config(page_title="BLAST", layout="wide")
+st.title("💥 BLAST")
 st.write("Ask me anything!")
 
 # ---- API Key UI ----
@@ -36,3 +36,4 @@ if user_input:
 
     st.subheader("Answer:")
     st.write(response.content)
+
