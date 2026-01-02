@@ -1,80 +1,67 @@
 import streamlit as st
-from langchain_community.document_loaders import TextLoader
+from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain.chains import ConversationalRetrievalChain
 
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+st.set_page_config(page_title="RAG Chatbot", page_icon="🤖")
 
-
-st.set_page_config(page_title="Free RAG Chatbot", layout="wide")
-
-st.title("🤖 100% FREE RAG Chatbot")
-st.write("Ask anything about AI, Generative AI, or your documents — completely free!")
-
-# Sidebar Groq API key
-groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
+# -------------------------------
+# 1. SIDEBAR – API KEY INPUT
+# -------------------------------
+st.sidebar.header("🔐 Enter Groq API Key")
+groq_api_key = st.sidebar.text_input("Groq API Key", type="password")
 
 if not groq_api_key:
-    st.warning("Please enter your FREE Groq API key.")
+    st.warning("⚠️ Please enter your Groq API Key to continue.")
     st.stop()
 
-uploaded_file = st.file_uploader("Upload a document (txt)", type=["txt"])
+# -------------------------------
+# 2. LLM (works even without RAG)
+# -------------------------------
+llm = ChatGroq(
+    api_key=groq_api_key,
+    model="llama-3.1-8b-instant"
+)
+
+st.title("🤖 RAG Chatbot Demo")
+st.write("Ask me anything — upload a document *optional*.")
+
+# -------------------------------
+# 3. Optional File Upload
+# -------------------------------
+uploaded_file = st.file_uploader("Upload a text file (optional)", type=["txt"])
+
+vectorstore = None
 
 if uploaded_file:
-    # Save uploaded file
-    with open("data.txt", "wb") as f:
-        f.write(uploaded_file.read())
+    text = uploaded_file.read().decode("utf-8")
 
-    loader = TextLoader("data.txt")
-    docs = loader.load()
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = splitter.split_text(text)
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-    chunks = splitter.split_documents(docs)
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    vectorstore = FAISS.from_texts(chunks, embeddings)
 
-    # FREE local embeddings – no paid API needed
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+# -------------------------------
+# 4. Chat Input
+# -------------------------------
+query = st.text_input("Ask a question:")
 
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    retriever = vectorstore.as_retriever()
+if query:
+    if vectorstore:
+        # --------- RAG MODE ---------
+        retriever = vectorstore.as_retriever()
+        chain = ConversationalRetrievalChain.from_llm(llm=llm, retriever=retriever)
 
-    # FREE Groq LLM
-    llm = ChatGroq(
-        api_key=groq_api_key,
-        model="llama-3.1-8b-instant"
-    )
-
-    prompt = ChatPromptTemplate.from_template("""
-You are a friendly AI RAG chatbot.
-
-Guidelines:
-- Greet when user says hi/hello.
-- Explain AI & Generative AI clearly.
-- Use retrieved document context.
-- Say goodbye kindly when user says bye.
-
-Context:
-{context}
-
-Question:
-{question}
-""")
-
-    chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-    )
-
-    query = st.text_input("Ask a question")
-
-    if query:
-        response = chain.invoke(query)
+        response = chain({"question": query, "chat_history": []})
+        st.write("📄 **Answer (RAG):**")
+        st.write(response["answer"])
+    else:
+        # --------- NORMAL LLM CHAT ---------
+        response = llm.invoke(query)
+        st.write("💬 **Answer:**")
         st.write(response.content)
 
-        if "bye" in query.lower():
-            st.success("Goodbye! See you soon 😊")
+
