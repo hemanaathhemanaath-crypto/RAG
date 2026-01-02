@@ -3,65 +3,75 @@ from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains import ConversationalRetrievalChain
 
 st.set_page_config(page_title="RAG Chatbot", page_icon="🤖")
 
 # -------------------------------
-# 1. SIDEBAR – API KEY INPUT
+# SIDEBAR → API KEY
 # -------------------------------
 st.sidebar.header("🔐 Enter Groq API Key")
 groq_api_key = st.sidebar.text_input("Groq API Key", type="password")
 
 if not groq_api_key:
-    st.warning("⚠️ Please enter your Groq API Key to continue.")
+    st.warning("⚠️ Enter your Groq API key to continue.")
     st.stop()
 
 # -------------------------------
-# 2. LLM (works even without RAG)
+# LLM
 # -------------------------------
 llm = ChatGroq(
     api_key=groq_api_key,
     model="llama-3.1-8b-instant"
 )
 
-st.title("🤖 RAG Chatbot Demo")
-st.write("Ask me anything — upload a document *optional*.")
+st.title("🤖 RAG Chatbot Demo (Upload Optional)")
+st.write("Ask anything. Uploading a file enables RAG mode.")
 
 # -------------------------------
-# 3. Optional File Upload
+# FILE UPLOAD (optional)
 # -------------------------------
-uploaded_file = st.file_uploader("Upload a text file (optional)", type=["txt"])
-
+uploaded_file = st.file_uploader("Upload a .txt file (optional)", type=["txt"])
 vectorstore = None
 
 if uploaded_file:
-    text = uploaded_file.read().decode("utf-8")
+    raw_text = uploaded_file.read().decode("utf-8")
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_text(text)
+    chunks = splitter.split_text(raw_text)
 
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectorstore = FAISS.from_texts(chunks, embeddings)
+    vectorstore = FAISS.from_texts(texts=chunks, embedding=embeddings)
 
 # -------------------------------
-# 4. Chat Input
+# CHAT INPUT
 # -------------------------------
-query = st.text_input("Ask a question:")
+user_query = st.text_input("Ask a question:")
 
-if query:
+if user_query:
     if vectorstore:
-        # --------- RAG MODE ---------
+        # RAG MODE
         retriever = vectorstore.as_retriever()
-        chain = ConversationalRetrievalChain.from_llm(llm=llm, retriever=retriever)
+        docs = retriever.get_relevant_documents(user_query)
 
-        response = chain({"question": query, "chat_history": []})
-        st.write("📄 **Answer (RAG):**")
-        st.write(response["answer"])
-    else:
-        # --------- NORMAL LLM CHAT ---------
-        response = llm.invoke(query)
-        st.write("💬 **Answer:**")
+        context_text = "\n\n".join([doc.page_content for doc in docs])
+        prompt = f"""
+You are an AI assistant. Use the CONTEXT below only if it is relevant.
+
+CONTEXT:
+{context_text}
+
+QUESTION:
+{user_query}
+
+Answer clearly:
+"""
+
+        response = llm.invoke(prompt)
+        st.write("📄 **Answer (RAG MODE):**")
         st.write(response.content)
 
-
+    else:
+        # NORMAL LLM CHAT
+        response = llm.invoke(user_query)
+        st.write("💬 **Answer:**")
+        st.write(response.content)
