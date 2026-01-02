@@ -6,21 +6,21 @@ from langchain_groq import ChatGroq
 # -------------------------------
 # Streamlit UI Setup
 # -------------------------------
-st.set_page_config(page_title="RAG Chatbot Demo", layout="wide")
-st.title("🤖 RAG Chatbot Demo")
+st.set_page_config(page_title="Chatbot", layout="wide")
+st.title("🤖 Chatbot")
 
 # -------------------------------
 # API Key Input UI
 # -------------------------------
 groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
-st.sidebar.info("Get your free API key at https://console.groq.com/keys")
+st.sidebar.info("Get a FREE API key at https://console.groq.com/keys")
 
 if not groq_api_key:
-    st.warning("⚠ Please enter your Groq API key to start chatting.")
+    st.warning("⚠ Please enter your Groq API key to continue.")
     st.stop()
 
 # -------------------------------
-# LLM Setup (Groq)
+# LLM Setup
 # -------------------------------
 llm = ChatGroq(
     api_key=groq_api_key,
@@ -28,12 +28,11 @@ llm = ChatGroq(
 )
 
 # -------------------------------
-# Memory to keep chat history
+# Chat History
 # -------------------------------
 if "memory" not in st.session_state:
     st.session_state.memory = ConversationBufferMemory(return_messages=True)
 
-# Chat chain using memory
 chat_chain = ConversationChain(
     llm=llm,
     memory=st.session_state.memory
@@ -51,8 +50,8 @@ if user_input:
     with st.chat_message("user"):
         st.write(user_input)
 
-    response = chat_chain.run(user_input)
+    # MODEL RETURNS ONLY CLEAN TEXT
+    answer = chat_chain.run(user_input)
 
     with st.chat_message("assistant"):
-        st.write(response)
-
+        st.write(answer)
