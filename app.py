@@ -9,52 +9,48 @@ st.set_page_config(page_title="RAG Chatbot", layout="wide")
 
 st.title("🤖 RAG Chatbot Demo")
 
-
-# Sidebar for API key
+# Sidebar
 groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
 
-
-# Load model
+# Load LLM
 def load_llm():
     return ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
 
-
-# File upload
+# File Upload
 uploaded_file = st.file_uploader("Upload a text file", type=["txt"])
 
-if uploaded_file and groq_api_key:
+vectorstore = None
 
-    # Read file
+# If file uploaded → build vector DB
+if uploaded_file:
     file_text = uploaded_file.read().decode("utf-8")
-
-    # Split text
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=200)
     chunks = splitter.split_text(file_text)
 
-    # Embeddings
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-    # FAISS database
     vectorstore = FAISS.from_texts(chunks, embeddings)
 
+    st.success("File processed! Using RAG mode.")
+
+# Chat input (always visible)
+query = st.text_input("Ask something:")
+
+# Chat handling
+if query and groq_api_key:
     llm = load_llm()
 
-    st.success("File processed! Ask your question below:")
-
-    query = st.text_input("Ask something:")
-
-    if query:
-        # Retrieve relevant chunks
+    # If RAG available → use it
+    if vectorstore:
         docs = vectorstore.similarity_search(query, k=3)
-
-        # Build final prompt
-        context = "\n\n".join([d.page_content for d in docs])
+        context = "\n\n".join(d.page_content for d in docs)
         prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+    else:
+        # No RAG → pure LLM mode
+        prompt = query
 
-        # Generate response
-        response = llm.invoke(prompt)
+    response = llm.invoke(prompt)
 
-        st.write("### Answer:")
-        st.write(response)
+    st.write("### Answer:")
+    st.write(response)
 else:
-    st.info("Upload a file + Enter Groq API key to continue.")
+    st.info("Enter a query + Groq API Key to continue.")
