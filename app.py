@@ -1,77 +1,60 @@
 import streamlit as st
 from langchain_groq import ChatGroq
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-st.set_page_config(page_title="RAG Chatbot", page_icon="🤖")
 
-# -------------------------------
-# SIDEBAR → API KEY
-# -------------------------------
-st.sidebar.header("🔐 Enter Groq API Key")
-groq_api_key = st.sidebar.text_input("Groq API Key", type="password")
+st.set_page_config(page_title="RAG Chatbot", layout="wide")
 
-if not groq_api_key:
-    st.warning("⚠️ Enter your Groq API key to continue.")
-    st.stop()
+st.title("🤖 RAG Chatbot Demo")
 
-# -------------------------------
-# LLM
-# -------------------------------
-llm = ChatGroq(
-    api_key=groq_api_key,
-    model="llama-3.1-8b-instant"
-)
 
-st.title("🤖 RAG Chatbot Demo (Upload Optional)")
-st.write("Ask anything. Uploading a file enables RAG mode.")
+# Sidebar for API key
+groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
 
-# -------------------------------
-# FILE UPLOAD (optional)
-# -------------------------------
-uploaded_file = st.file_uploader("Upload a .txt file (optional)", type=["txt"])
-vectorstore = None
 
-if uploaded_file:
-    raw_text = uploaded_file.read().decode("utf-8")
+# Load model
+def load_llm():
+    return ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_text(raw_text)
 
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectorstore = FAISS.from_texts(texts=chunks, embedding=embeddings)
+# File upload
+uploaded_file = st.file_uploader("Upload a text file", type=["txt"])
 
-# -------------------------------
-# CHAT INPUT
-# -------------------------------
-user_query = st.text_input("Ask a question:")
+if uploaded_file and groq_api_key:
 
-if user_query:
-    if vectorstore:
-        # RAG MODE
-        retriever = vectorstore.as_retriever()
-        docs = retriever.get_relevant_documents(user_query)
+    # Read file
+    file_text = uploaded_file.read().decode("utf-8")
 
-        context_text = "\n\n".join([doc.page_content for doc in docs])
-        prompt = f"""
-You are an AI assistant. Use the CONTEXT below only if it is relevant.
+    # Split text
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=200)
+    chunks = splitter.split_text(file_text)
 
-CONTEXT:
-{context_text}
+    # Embeddings
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-QUESTION:
-{user_query}
+    # FAISS database
+    vectorstore = FAISS.from_texts(chunks, embeddings)
 
-Answer clearly:
-"""
+    llm = load_llm()
 
+    st.success("File processed! Ask your question below:")
+
+    query = st.text_input("Ask something:")
+
+    if query:
+        # Retrieve relevant chunks
+        docs = vectorstore.similarity_search(query, k=3)
+
+        # Build final prompt
+        context = "\n\n".join([d.page_content for d in docs])
+        prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+
+        # Generate response
         response = llm.invoke(prompt)
-        st.write("📄 **Answer (RAG MODE):**")
-        st.write(response.content)
 
-    else:
-        # NORMAL LLM CHAT
-        response = llm.invoke(user_query)
-        st.write("💬 **Answer:**")
-        st.write(response.content)
+        st.write("### Answer:")
+        st.write(response)
+else:
+    st.info("Upload a file + Enter Groq API key to continue.")
